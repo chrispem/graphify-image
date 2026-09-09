@@ -1,0 +1,49 @@
+# graphify on Dokploy — one system (rename "aura" for others)
+#
+# Dokploy: Compose service, source = the Git repo containing this file + Dockerfile + index.sh
+# Environment tab:
+#   GRAPH_API_KEY=<long random string>
+#   REPO_URL=https://<pat>@dev.azure.com/org/project/_git/aura
+# Domain tab: host -> service aura-graph, port 8080, HTTPS on
+# Schedule:  docker compose --profile index run --rm aura-indexer && docker compose restart aura-graph
+# First run: same command as the schedule, once, after the first deploy
+
+services:
+
+  aura-graph:
+    build:
+      context: .
+    image: graphify:local
+    command: >
+      /data/graph.json
+      --transport http --host 0.0.0.0 --port 8080
+      --api-key ${GRAPH_API_KEY}
+      --stateless
+    environment:
+      - GRAPHIFY_MAX_GRAPH_BYTES=1GB
+    volumes:
+      - ../files/aura-graph:/data:ro
+    networks:
+      - dokploy-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /data/graph.json"]
+      interval: 60s
+      retries: 3
+
+  aura-indexer:
+    image: graphify:local
+    entrypoint: ["sh", "/index.sh"]
+    environment:
+      - REPO_URL=${REPO_URL}
+    volumes:
+      - ../files/aura-graph:/data
+      - ../files/aura-src:/src
+    networks:
+      - dokploy-network
+    restart: "no"
+    profiles: ["index"]
+
+networks:
+  dokploy-network:
+    external: true
