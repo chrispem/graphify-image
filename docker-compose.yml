@@ -1,10 +1,11 @@
-# graphify on Dokploy — one system (rename "aura" for others)
+# graphify on Dokploy — one system (rename "graphify" -> "<system>" for others)
 #
 # Dokploy: Compose service, source = the Git repo containing this file + Dockerfile + index.sh
 # Environment tab:
 #   GRAPH_API_KEY=<long random string>
 #   REPO_URL=https://<pat>@dev.azure.com/org/project/_git/myapp
-# Domain tab: host -> service graphify-graph, port 8080, HTTPS on
+#   GRAPH_HOST=graph.draw.football
+# Routing is done by the Traefik labels below — no Domains tab entry needed.
 # Schedule:  docker compose --profile index run --rm graphify-indexer && docker compose restart graphify-graph
 # First run: same command as the schedule, once, after the first deploy
 
@@ -26,10 +27,21 @@ services:
     networks:
       - dokploy-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "test -f /data/graph.json"]
-      interval: 60s
-      retries: 3
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      # HTTPS
+      - traefik.http.routers.graphify.rule=Host(`${GRAPH_HOST}`)
+      - traefik.http.routers.graphify.entrypoints=websecure
+      - traefik.http.routers.graphify.tls.certresolver=letsencrypt
+      - traefik.http.routers.graphify.service=graphify
+      - traefik.http.services.graphify.loadbalancer.server.port=8080
+      # HTTP -> HTTPS redirect
+      - traefik.http.routers.graphify-http.rule=Host(`${GRAPH_HOST}`)
+      - traefik.http.routers.graphify-http.entrypoints=web
+      - traefik.http.routers.graphify-http.middlewares=graphify-redir
+      - traefik.http.middlewares.graphify-redir.redirectscheme.scheme=https
+      - traefik.http.middlewares.graphify-redir.redirectscheme.permanent=true
 
   graphify-indexer:
     image: graphify:local
