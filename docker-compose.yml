@@ -5,7 +5,11 @@
 #   GRAPH_API_KEY=<long random string>
 #   REPO_URL=https://<pat>@dev.azure.com/org/project/_git/myapp
 #   GRAPH_HOST=graph.draw.football
+#   GRAPH_UI_USERS=chris:$$apr1$$...     # htpasswd -nb chris 'password', then double every $
 # Routing is done by the Traefik labels below — no Domains tab entry needed.
+#   https://GRAPH_HOST/mcp               -> MCP server (bearer key)
+#   https://GRAPH_HOST/graph/graph.html  -> interactive graph (basic auth)
+#   https://GRAPH_HOST/graph/GRAPH_REPORT.md
 # Schedule:  docker compose --profile index run --rm graphify-indexer && docker compose restart graphify-graph
 # First run: same command as the schedule, once, after the first deploy
 
@@ -34,6 +38,7 @@ services:
       - traefik.http.routers.graphify.rule=Host(`${GRAPH_HOST}`)
       - traefik.http.routers.graphify.entrypoints=websecure
       - traefik.http.routers.graphify.tls.certresolver=letsencrypt
+      - traefik.http.routers.graphify.priority=10
       - traefik.http.routers.graphify.service=graphify
       - traefik.http.services.graphify.loadbalancer.server.port=8080
       # HTTP -> HTTPS redirect
@@ -42,6 +47,26 @@ services:
       - traefik.http.routers.graphify-http.middlewares=graphify-redir
       - traefik.http.middlewares.graphify-redir.redirectscheme.scheme=https
       - traefik.http.middlewares.graphify-redir.redirectscheme.permanent=true
+
+  graphify-ui:
+    image: nginx:alpine
+    volumes:
+      - ../files/graphify-graph:/usr/share/nginx/html:ro
+    networks:
+      - dokploy-network
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.graphify-ui.rule=Host(`${GRAPH_HOST}`) && PathPrefix(`/graph`)
+      - traefik.http.routers.graphify-ui.entrypoints=websecure
+      - traefik.http.routers.graphify-ui.tls.certresolver=letsencrypt
+      - traefik.http.routers.graphify-ui.priority=20
+      - traefik.http.routers.graphify-ui.middlewares=graphify-ui-strip,graphify-ui-auth
+      - traefik.http.routers.graphify-ui.service=graphify-ui
+      - traefik.http.middlewares.graphify-ui-strip.stripprefix.prefixes=/graph
+      - traefik.http.middlewares.graphify-ui-auth.basicauth.users=${GRAPH_UI_USERS}
+      - traefik.http.services.graphify-ui.loadbalancer.server.port=80
 
   graphify-indexer:
     image: graphify:local
