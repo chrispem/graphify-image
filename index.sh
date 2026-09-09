@@ -18,6 +18,9 @@ cd /src
 echo "extracting..."
 graphify extract . --code-only --force
 
+echo "clustering..."
+graphify cluster-only .
+
 echo "publishing..."
 mkdir -p /data
 cp -r graphify-out/. /data/
